@@ -491,6 +491,12 @@ const finishBill = async (req, res) => {
 // @desc    Delete bill (only if no payments made)
 // @route   DELETE /api/bills/:id
 // @access  Private
+// Add this to backend/src/controllers/billController.js
+// Replace the existing deleteBill function with this one:
+
+// @desc    Delete bill (force delete - removes payments too)
+// @route   DELETE /api/bills/:id
+// @access  Private
 const deleteBill = async (req, res) => {
     const client = await pool.connect();
     
@@ -515,21 +521,14 @@ const deleteBill = async (req, res) => {
         
         const bill = billCheck.rows[0];
         
-        // Check if any payments have been made
-        const paymentsCheck = await client.query(
-            'SELECT COUNT(*) as count FROM payments WHERE bill_id = $1',
+        // Force delete: Remove all related data
+        // Delete payments first (foreign key constraint)
+        await client.query(
+            'DELETE FROM payments WHERE bill_id = $1',
             [id]
         );
         
-        if (parseInt(paymentsCheck.rows[0].count) > 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({
-                success: false,
-                message: 'Cannot delete bill with existing payments. Please finish the bill instead.'
-            });
-        }
-        
-        // Delete bill items first (foreign key constraint)
+        // Delete bill items
         await client.query(
             'DELETE FROM bill_items WHERE bill_id = $1',
             [id]
@@ -551,7 +550,7 @@ const deleteBill = async (req, res) => {
         
         res.json({
             success: true,
-            message: 'Bill deleted successfully'
+            message: 'Bill and all associated data deleted successfully'
         });
     } catch (error) {
         await client.query('ROLLBACK');
