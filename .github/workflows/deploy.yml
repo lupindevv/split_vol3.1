@@ -11,63 +11,9 @@ env:
   VM_USERNAME: ${{ secrets.VM_USERNAME }}
 
 jobs:
-  version:
-    name: Calculate Version
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get latest tag
-        id: get_tag
-        run: |
-          # Get the latest tag, or use v1.0.0 if no tags exist
-          git fetch --tags
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
-          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-          echo "📦 Current version: $LATEST_TAG"
-
-      - name: Bump version
-        id: version
-        run: |
-          LATEST_TAG="${{ steps.get_tag.outputs.latest_tag }}"
-          
-          # Remove 'v' prefix
-          VERSION=${LATEST_TAG#v}
-          
-          # Split version into major.minor.patch
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          
-          # Increment patch version
-          PATCH=$((PATCH + 1))
-          
-          # Create new version
-          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
-          
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "✨ New version: $NEW_VERSION"
-
-      - name: Create and push new tag
-        run: |
-          NEW_VERSION="${{ steps.version.outputs.version }}"
-          
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          
-          git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
-          git push origin $NEW_VERSION
-          
-          echo "✅ Created and pushed tag: $NEW_VERSION"
-
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
-    needs: version
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,7 +34,6 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-backend:${{ needs.version.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-backend:latest
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/splitbill-backend:latest
           cache-to: type=inline
@@ -100,7 +45,6 @@ jobs:
           file: ./frontend/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-frontend:${{ needs.version.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-frontend:latest
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/splitbill-frontend:latest
           cache-to: type=inline
@@ -108,13 +52,11 @@ jobs:
       - name: Image build summary
         run: |
           echo "🎉 Docker images built and pushed successfully!"
-          echo "Backend: ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-backend:${{ needs.version.outputs.version }}"
-          echo "Frontend: ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-frontend:${{ needs.version.outputs.version }}"
 
   deploy:
     name: Deploy to Azure VM
     runs-on: ubuntu-latest
-    needs: [version, build-and-push]
+    needs: build-and-push
     steps:
       - name: Setup SSH
         run: |
@@ -180,24 +122,7 @@ jobs:
           echo "======================================"
           echo "🎉 DEPLOYMENT SUCCESSFUL!"
           echo "======================================"
-          echo "📦 Version: ${{ needs.version.outputs.version }}"
-          echo "🐳 Backend: ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-backend:${{ needs.version.outputs.version }}"
-          echo "🐳 Frontend: ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-frontend:${{ needs.version.outputs.version }}"
+          echo "🐳 Backend: ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-backend:latest"
+          echo "🐳 Frontend: ${{ secrets.DOCKERHUB_USERNAME }}/splitbill-frontend:latest"
           echo "🌐 Application URL: http://${{ secrets.VM_HOST }}"
-          echo "======================================"
-          echo ""
-          echo "✨ Your application is now live!"
-
-      - name: Deployment Failed
-        if: failure()
-        run: |
-          echo "======================================"
-          echo "❌ DEPLOYMENT FAILED"
-          echo "======================================"
-          echo "Please check the logs above for errors."
-          echo "You may need to:"
-          echo "  1. Check VM is running and accessible"
-          echo "  2. Verify SSH connection works"
-          echo "  3. Check Docker and Docker Compose are installed on VM"
-          echo "  4. Review container logs on the VM"
           echo "======================================"
